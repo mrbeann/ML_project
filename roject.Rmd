@@ -1,0 +1,84 @@
+---
+title: "Practical Machine Learning"
+subtitle: "Course Project"
+author: "Jiacheng Liu"
+date: "December 18, 2014"
+output: html_document
+---
+```{r, echo = F, warning=F, results='hide', message=F, cache = T}
+require(caret)
+require(randomForest)
+```
+#Background
+*Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ¨C a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). *
+#Load Data & Overview
+```{r,cache=TRUE}
+library(caret)
+testing <- read.csv("pml-testing.csv", sep = ",", na.strings = c("", "NA"))
+training <- read.csv("pml-training.csv", sep = ",", na.strings = c("", "NA"))
+```
+
+# Cleanup the data
+we can found there is a lot of NAs, so first i remove it.Then i found that the first seven element is useless,and remove it too.
+```{r, cache = T}
+features <- names(testing[,colSums(is.na(testing)) == 0])[8:59]
+training <- training[,c(features,"classe")]
+testing <- testing[,c(features,"problem_id")]
+```
+
+# Data Partition
+To build a test set.
+```{r, cache = T}
+set.seed(6666)
+inTrain = createDataPartition(training$classe, p = 0.75, list = F)
+train = training[inTrain,]
+test = training[-inTrain,]
+```
+
+# Feature Selection
+for there is also over fifty features i remove the redundant.
+```{r, cache = T}
+outcome = which(names(train) == "classe")
+highCorrCols = findCorrelation(abs(cor(train[,-outcome])),0.90)
+highCorrFeatures = names(train)[highCorrCols]
+train = train[,-highCorrCols]
+outcome = which(names(train) == "classe")
+```
+
+# Training
+Train using the random forest and k-nearest neighbors for comparison.
+```{r, cache = T}
+ctrlRF = trainControl(method = "oob")
+modelRF = train(classe ~ ., train, method = "rf", ntree = 100, trControl = ctrlRF)
+resultsRF = data.frame(modelRF$results)
+```
+
+# Testing
+i apply the model in the test set and build a confusion matrix to compare
+```{r, cache = T}
+fitRF = predict(modelRF, test)
+```
+
+##matrix
+```{r, cache = T, echo = F}
+confusionMatrix(fitRF, test$classe)
+```
+The random forest fit is clearly more than accurate with over 99% accuracy, i think is not necessary to try another method.
+
+### predict
+Apply the random forest model to the testing set ,and write them to files.
+```{r, cache = T,echo = F}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+answers = predict(modelRF, testing)
+pml_write_files(answers)
+ans = data.frame(problem.id = 1:20,answers = answers)
+x <- as.matrix(format(ans))
+rownames(x) <- rep("", nrow(x))
+print(x, quote=FALSE, right=TRUE)
+```
